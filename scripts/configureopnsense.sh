@@ -120,13 +120,19 @@ sed -i "" 's/#PermitRootLogin no/PermitRootLogin yes/' /etc/ssh/sshd_config
 log "Patching bootstrap script..."
 sed -i "" "s/^[[:space:]]*reboot$/true/" opnsense-bootstrap.sh.in
 
-log "Running OPNsense bootstrap (version: ${BOOTSTRAP_VERSION})..."
-sh ./opnsense-bootstrap.sh.in -y -r "$BOOTSTRAP_VERSION"
+if [ -f /usr/local/opnsense/version/pkgs ] && grep -qx "$BOOTSTRAP_VERSION" /usr/local/opnsense/version/pkgs; then
+    log "OPNsense ${BOOTSTRAP_VERSION} bootstrap is already complete; continuing provisioning."
+else
+    log "Running OPNsense bootstrap (version: ${BOOTSTRAP_VERSION})..."
+    sh ./opnsense-bootstrap.sh.in -y -r "$BOOTSTRAP_VERSION"
+fi
 
 # ── Azure WALinuxAgent ────────────────────────────────────────────────────────
 log "Installing WALinuxAgent v${WA_LINUX_VERSION}..."
 fetch -q "https://github.com/Azure/WALinuxAgent/archive/refs/tags/v${WA_LINUX_VERSION}.tar.gz"
 tar -xzf "v${WA_LINUX_VERSION}.tar.gz"
+PYTHON_PACKAGE_VERSION=$(python3 -c 'import sys; print("%d%d" % sys.version_info[:2])')
+pkg install -y "py${PYTHON_PACKAGE_VERSION}-setuptools"
 cd "WALinuxAgent-${WA_LINUX_VERSION}/"
 python3 setup.py install --register-service --lnx-distro=freebsd --force
 cd ..
