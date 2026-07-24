@@ -120,12 +120,20 @@ sed -i "" 's/#PermitRootLogin no/PermitRootLogin yes/' /etc/ssh/sshd_config
 log "Patching bootstrap script..."
 sed -i "" "s/^[[:space:]]*reboot$/true/" opnsense-bootstrap.sh.in
 
-if [ -f /usr/local/opnsense/version/pkgs ] && grep -qx "$BOOTSTRAP_VERSION" /usr/local/opnsense/version/pkgs; then
+INSTALLED_OPNSENSE_VERSION=""
+if [ -f /usr/local/opnsense/version/pkgs ]; then
+    INSTALLED_OPNSENSE_VERSION=$(cat /usr/local/opnsense/version/pkgs)
+fi
+
+case "$INSTALLED_OPNSENSE_VERSION" in
+"$BOOTSTRAP_VERSION"|"$BOOTSTRAP_VERSION".*)
     log "OPNsense ${BOOTSTRAP_VERSION} bootstrap is already complete; continuing provisioning."
-else
+    ;;
+*)
     log "Running OPNsense bootstrap (version: ${BOOTSTRAP_VERSION})..."
     sh ./opnsense-bootstrap.sh.in -y -r "$BOOTSTRAP_VERSION"
-fi
+    ;;
+esac
 
 # ── Azure WALinuxAgent ────────────────────────────────────────────────────────
 log "Installing WALinuxAgent v${WA_LINUX_VERSION}..."
