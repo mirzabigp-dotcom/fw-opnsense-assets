@@ -36,6 +36,16 @@ WINDOWS_VM_SUBNET="${6:-}"
 ELB_VIP="${7:-}"
 SECONDARY_IP="${8:-}"
 
+# OPNsense 26.7 uses FreeBSD 15 packages, while the supported bootstrap source
+# image for Azure is stock FreeBSD 14.3. Bootstrap the matching 26.1 release
+# first, then let OPNsense perform its supported major upgrade after reboot.
+BOOTSTRAP_VERSION="$OPN_VERSION"
+UPGRADE_VERSION=""
+if [ "$OPN_VERSION" = "26.7" ]; then
+    BOOTSTRAP_VERSION="26.1"
+    UPGRADE_VERSION="$OPN_VERSION"
+fi
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
@@ -110,8 +120,8 @@ sed -i "" 's/#PermitRootLogin no/PermitRootLogin yes/' /etc/ssh/sshd_config
 log "Patching bootstrap script..."
 sed -i "" "s/reboot/shutdown -r +1/g" opnsense-bootstrap.sh.in
 
-log "Running OPNsense bootstrap (version: ${OPN_VERSION})..."
-sh ./opnsense-bootstrap.sh.in -y -r "$OPN_VERSION"
+log "Running OPNsense bootstrap (version: ${BOOTSTRAP_VERSION})..."
+sh ./opnsense-bootstrap.sh.in -y -r "$BOOTSTRAP_VERSION"
 
 # ── Azure WALinuxAgent ────────────────────────────────────────────────────────
 log "Installing WALinuxAgent v${WA_LINUX_VERSION}..."
@@ -179,4 +189,15 @@ rm /usr/local/etc/rc.syshook.d/start/94-restartwebgui
 EOL
 chmod +x /usr/local/etc/rc.syshook.d/start/94-restartwebgui
 
-log "OPNsense provisioning complete. System will reboot in approximately 1 minute."
+if [ -n "$UPGRADE_VERSION" ]; then
+    log "Scheduling OPNsense major upgrade to ${UPGRADE_VERSION} after first boot..."
+    cat > /usr/local/etc/rc.syshook.d/start/99-major-upgrade <<EOL
+#!/bin/sh
+rm -f /usr/local/etc/rc.syshook.d/start/99-major-upgrade
+/usr/local/etc/rc.firmware upgrade ${UPGRADE_VERSION}
+EOL
+    chmod +x /usr/local/etc/rc.syshook.d/start/99-major-upgrade
+    log "OPNsense ${BOOTSTRAP_VERSION} provisioning complete. The system will reboot, upgrade to ${UPGRADE_VERSION}, and reboot again."
+else
+    log "OPNsense provisioning complete. System will reboot in approximately 1 minute."
+fi
