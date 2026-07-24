@@ -115,10 +115,10 @@ fetch -q https://raw.githubusercontent.com/opnsense/update/master/src/bootstrap/
 log "Enabling root SSH login..."
 sed -i "" 's/#PermitRootLogin no/PermitRootLogin yes/' /etc/ssh/sshd_config
 
-# Delay reboot by 1 minute so the rest of this script can finish. Keep the
-# bootstrap's fail-fast behavior so Azure reports an installation failure.
+# Defer the bootstrap reboot until every Azure integration and upgrade hook has
+# been installed. Keep fail-fast behavior so Azure reports installation errors.
 log "Patching bootstrap script..."
-sed -i "" "s/reboot/shutdown -r +1/g" opnsense-bootstrap.sh.in
+sed -i "" "s/^[[:space:]]*reboot$/true/" opnsense-bootstrap.sh.in
 
 log "Running OPNsense bootstrap (version: ${BOOTSTRAP_VERSION})..."
 sh ./opnsense-bootstrap.sh.in -y -r "$BOOTSTRAP_VERSION"
@@ -201,3 +201,5 @@ EOL
 else
     log "OPNsense provisioning complete. System will reboot in approximately 1 minute."
 fi
+
+shutdown -r +1

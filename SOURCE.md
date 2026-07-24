@@ -18,6 +18,7 @@ Local changes include:
   supported OPNsense major upgrade to 26.7 (FreeBSD 15.1), with WALinuxAgent
   2.15.0.1.
 - Preserved fail-fast bootstrap behavior so Azure reports installation errors.
+- Deferred reboot until Azure integration and upgrade hooks are fully installed.
 - Retained separate configuration files for single-VM and HA deployments.
 - Added compatibility with the legacy Azure Custom Script extension on
   FreeBSD.
