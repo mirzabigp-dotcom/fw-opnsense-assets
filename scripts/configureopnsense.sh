@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -eu
+
 # configureopnsense-v2.sh
 # Improvements over v1:
 #   - Named variables for all positional parameters (readability)
@@ -103,11 +105,9 @@ fetch -q https://raw.githubusercontent.com/opnsense/update/master/src/bootstrap/
 log "Enabling root SSH login..."
 sed -i "" 's/#PermitRootLogin no/PermitRootLogin yes/' /etc/ssh/sshd_config
 
-# Patch bootstrap:
-#   - Disable set -e because pkg commands (unlock -a, delete -fa) return non-zero
-#   - Delay reboot by 1 minute so the rest of this script can finish
+# Delay reboot by 1 minute so the rest of this script can finish. Keep the
+# bootstrap's fail-fast behavior so Azure reports an installation failure.
 log "Patching bootstrap script..."
-sed -i "" "s/set -e/#set -e/g" opnsense-bootstrap.sh.in
 sed -i "" "s/reboot/shutdown -r +1/g" opnsense-bootstrap.sh.in
 
 log "Running OPNsense bootstrap (version: ${OPN_VERSION})..."
