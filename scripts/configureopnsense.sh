@@ -37,7 +37,7 @@ ELB_VIP="${7:-}"
 SECONDARY_IP="${8:-}"
 
 # OPNsense 26.7 uses FreeBSD 15 packages, while the supported bootstrap source
-# image for Azure is stock FreeBSD 14.3. Bootstrap the matching 26.1 release
+# image for Azure is stock FreeBSD 14.4. Bootstrap the matching 26.1 release
 # first, then let OPNsense perform its supported major upgrade after reboot.
 BOOTSTRAP_VERSION="$OPN_VERSION"
 UPGRADE_VERSION=""
