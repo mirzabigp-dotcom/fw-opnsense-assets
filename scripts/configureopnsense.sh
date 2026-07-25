@@ -126,6 +126,10 @@ if [ -f /usr/local/opnsense/version/pkgs ]; then
 fi
 
 case "$INSTALLED_OPNSENSE_VERSION" in
+"$OPN_VERSION"|"$OPN_VERSION".*)
+    log "OPNsense ${OPN_VERSION} is already installed; continuing provisioning."
+    UPGRADE_VERSION=""
+    ;;
 "$BOOTSTRAP_VERSION"|"$BOOTSTRAP_VERSION".*)
     log "OPNsense ${BOOTSTRAP_VERSION} bootstrap is already complete; continuing provisioning."
     ;;
