@@ -154,7 +154,12 @@ if [ -n "$PYTHON3_BIN" ] && [ ! -e /usr/local/bin/python ]; then
     log "Symlink created: /usr/local/bin/python -> ${PYTHON3_BIN}"
 fi
 
-sed -i "" 's/ResourceDisk.EnableSwap=y/ResourceDisk.EnableSwap=n/' /etc/waagent.conf
+# WALinuxAgent's source installer places the FreeBSD config under /etc, while
+# the FreeBSD agent runtime reads it from /usr/local/etc.
+mkdir -p /usr/local/etc
+cp /etc/waagent.conf /usr/local/etc/waagent.conf
+sed -i "" 's/ResourceDisk.EnableSwap=y/ResourceDisk.EnableSwap=n/' /usr/local/etc/waagent.conf
+sysrc waagent_enable=YES
 
 log "Installing waagent actions configuration..."
 fetch -q "${OPN_SCRIPT_URI}actions_waagent.conf"
