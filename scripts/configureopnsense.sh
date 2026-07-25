@@ -219,6 +219,11 @@ EOL
 chmod +x /usr/local/etc/rc.syshook.d/start/94-restartwebgui
 
 if [ -n "$UPGRADE_VERSION" ]; then
+    # The temporary Azure bootstrap extension is removed by the workflow before
+    # this delayed reboot. Its legacy shim requires bash for clean uninstall.
+    log "Installing bash for temporary extension cleanup..."
+    pkg install -y bash
+
     log "Scheduling Azure integration repair after the major upgrade..."
     cat > /usr/local/etc/rc.syshook.d/start/99-azure-integration <<EOL
 #!/bin/sh
@@ -246,4 +251,4 @@ else
     log "OPNsense provisioning complete. System will reboot in approximately 1 minute."
 fi
 
-shutdown -r +1
+shutdown -r +5
