@@ -139,42 +139,48 @@ case "$INSTALLED_OPNSENSE_VERSION" in
     ;;
 esac
 
-# ── Azure WALinuxAgent ────────────────────────────────────────────────────────
-log "Installing WALinuxAgent v${WA_LINUX_VERSION}..."
-fetch -q "https://github.com/Azure/WALinuxAgent/archive/refs/tags/v${WA_LINUX_VERSION}.tar.gz"
-tar -xzf "v${WA_LINUX_VERSION}.tar.gz"
-PYTHON_PACKAGE_VERSION=$(python3 -c 'import sys; print("%d%d" % sys.version_info[:2])')
-pkg install -y "py${PYTHON_PACKAGE_VERSION}-setuptools"
-cd "WALinuxAgent-${WA_LINUX_VERSION}/"
-python3 setup.py install --register-service --lnx-distro=freebsd --force
-cd ..
+# ── Azure Integration Installer ───────────────────────────────────────────────
+# A major OPNsense upgrade replaces the base system and removes packages from
+# the stock FreeBSD image. Keep the installer outside pkg-managed paths so it
+# survives that transition and can restore waagent and optional packages after
+# the final reboot. VM provisioning itself uses cloud-init, not VM extensions.
+cat > /usr/local/sbin/install-azure-integration.sh <<'EOL'
+#!/bin/sh
+set -eu
 
-# Create /usr/local/bin/python symlink pointing at the installed python3 binary.
-# Detected dynamically so it remains correct if the python3 minor version changes.
-log "Configuring python symlink for waagent..."
-PYTHON3_BIN=$(ls /usr/local/bin/python3.* 2>/dev/null | grep -v '\.py$' | sort -V | tail -1)
-if [ -n "$PYTHON3_BIN" ] && [ ! -e /usr/local/bin/python ]; then
-    ln -s "$PYTHON3_BIN" /usr/local/bin/python
-    log "Symlink created: /usr/local/bin/python -> ${PYTHON3_BIN}"
+opn_script_uri="$1"
+wa_linux_version="$2"
+work_dir="/tmp/waagent-install"
+
+rm -rf "$work_dir"
+mkdir -p "$work_dir"
+cd "$work_dir"
+
+python_package_version=$(python3 -c 'import sys; print("%d%d" % sys.version_info[:2])')
+pkg install -y "py${python_package_version}-setuptools" bash os-frr
+
+fetch -q -o waagent.tar.gz "https://github.com/Azure/WALinuxAgent/archive/refs/tags/v${wa_linux_version}.tar.gz"
+tar -xzf waagent.tar.gz
+cd "WALinuxAgent-${wa_linux_version}"
+python3 setup.py install --register-service --lnx-distro=freebsd --force
+
+python3_bin=$(find /usr/local/bin -maxdepth 1 -type f -name 'python3.*' | sort -V | tail -1)
+if [ -n "$python3_bin" ]; then
+    ln -sf "$python3_bin" /usr/local/bin/python
 fi
 
-# WALinuxAgent's source installer places the FreeBSD config under /etc, while
-# the FreeBSD agent runtime reads it from /usr/local/etc.
 mkdir -p /usr/local/etc
 cp /etc/waagent.conf /usr/local/etc/waagent.conf
 sed -i "" 's/ResourceDisk.EnableSwap=y/ResourceDisk.EnableSwap=n/' /usr/local/etc/waagent.conf
 sysrc waagent_enable=YES
 
-log "Installing waagent actions configuration..."
-fetch -q "${OPN_SCRIPT_URI}actions_waagent.conf"
-cp actions_waagent.conf /usr/local/opnsense/service/conf/actions.d
+fetch -q -o /tmp/actions_waagent.conf "${opn_script_uri}actions_waagent.conf"
+cp /tmp/actions_waagent.conf /usr/local/opnsense/service/conf/actions.d/actions_waagent.conf
 
-# ── Additional Packages ───────────────────────────────────────────────────────
-# bash  : required for Azure Custom Script Extension
-# os-frr: FRRouting for dynamic routing support
-log "Installing additional packages (bash, os-frr)..."
-pkg install -y bash
-pkg install -y os-frr
+service waagent restart || service waagent start
+rm -rf "$work_dir"
+EOL
+chmod +x /usr/local/sbin/install-azure-integration.sh
 
 # ── Azure Route Fix ───────────────────────────────────────────────────────────
 # Delete the 168.63.129.16 host route that Azure injects at boot; OPNsense
@@ -213,15 +219,30 @@ EOL
 chmod +x /usr/local/etc/rc.syshook.d/start/94-restartwebgui
 
 if [ -n "$UPGRADE_VERSION" ]; then
-    log "Scheduling OPNsense major upgrade to ${UPGRADE_VERSION} after first boot..."
-    cat > /usr/local/etc/rc.syshook.d/start/99-major-upgrade <<EOL
+    log "Scheduling Azure integration repair after the major upgrade..."
+    cat > /usr/local/etc/rc.syshook.d/start/99-azure-integration <<EOL
 #!/bin/sh
-rm -f /usr/local/etc/rc.syshook.d/start/99-major-upgrade
+installed_version=\$(cat /usr/local/opnsense/version/pkgs 2>/dev/null || true)
+case "\$installed_version" in
+"${UPGRADE_VERSION}"|"${UPGRADE_VERSION}".*)
+    /usr/local/sbin/install-azure-integration.sh '${OPN_SCRIPT_URI}' '${WA_LINUX_VERSION}' >> /var/log/azure-integration.log 2>&1
+    rm -f /usr/local/etc/rc.syshook.d/start/99-azure-integration
+    ;;
+esac
+EOL
+    chmod +x /usr/local/etc/rc.syshook.d/start/99-azure-integration
+
+    log "Scheduling OPNsense major upgrade to ${UPGRADE_VERSION} after first boot..."
+    cat > /usr/local/etc/rc.syshook.d/start/98-major-upgrade <<EOL
+#!/bin/sh
+rm -f /usr/local/etc/rc.syshook.d/start/98-major-upgrade
 /usr/local/etc/rc.firmware upgrade ${UPGRADE_VERSION}
 EOL
-    chmod +x /usr/local/etc/rc.syshook.d/start/99-major-upgrade
+    chmod +x /usr/local/etc/rc.syshook.d/start/98-major-upgrade
     log "OPNsense ${BOOTSTRAP_VERSION} provisioning complete. The system will reboot, upgrade to ${UPGRADE_VERSION}, and reboot again."
 else
+    log "Installing Azure integration..."
+    /usr/local/sbin/install-azure-integration.sh "$OPN_SCRIPT_URI" "$WA_LINUX_VERSION"
     log "OPNsense provisioning complete. System will reboot in approximately 1 minute."
 fi
 
